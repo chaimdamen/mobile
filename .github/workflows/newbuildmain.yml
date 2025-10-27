@@ -1,0 +1,49 @@
+name: Build WPPConnect Mobile APK
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # Setup Java (required for Android Gradle)
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # Install dependencies (fixing peer dependency conflicts)
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      # Make gradlew executable
+      - name: Make Gradle executable
+        run: chmod +x android/gradlew
+
+      # Build the release APK
+      - name: Build Android Release APK
+        run: cd android && ./gradlew assembleRelease --no-daemon
+
+      # Upload APK artifact (using latest version of upload-artifact)
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wppconnect-mobile-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
