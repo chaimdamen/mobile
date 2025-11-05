@@ -5,15 +5,22 @@ workflows:
     environment:
       node: 18.18.0
       java: 17
+      vars:
+        PATH: /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/lib/node_modules/npm/bin/node-gyp-bin:$PATH
     scripts:
       - name: Install dependencies
         script: |
           npm install --legacy-peer-deps
+      - name: Verify Node CLI
+        script: |
+          echo "Node path:" $(which node)
+          node -v
+          npx react-native --version || echo "React Native CLI not found"
       - name: Build Android debug APK
         script: |
           cd android
           chmod +x gradlew
           ./gradlew clean
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
     artifacts:
       - android/app/build/outputs/**/*.apk
