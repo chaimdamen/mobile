@@ -1,30 +1,30 @@
 rootProject.name = 'wppconnect_mobile'
 
-// Include native modules
 include ':react-native-fs'
 project(':react-native-fs').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-fs/android')
 
 include ':react-native-vector-icons'
 project(':react-native-vector-icons').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-vector-icons/android')
 
-// ✅ FIX: use the new React Native CLI path (works with RN 0.69+)
-apply from: file("../node_modules/react-native/cli-platform-android/native_modules.gradle")
-applyNativeModulesSettingsGradle(settings)
-
-// Include main app
 include ':app'
-
-// Include React Native Gradle Plugin
 includeBuild('../node_modules/react-native-gradle-plugin')
 
-// Support for new architecture (Hermes, etc.)
+def cliFile = new File(rootProject.projectDir, "../node_modules/react-native/cli-platform-android/native_modules.gradle")
+if (cliFile.exists()) {
+    apply from: cliFile
+} else {
+    cliFile = new File(rootProject.projectDir, "../node_modules/@react-native-community/cli-platform-android/native_modules.gradle")
+    if (cliFile.exists()) {
+        apply from: cliFile
+    } else {
+        println("⚠️ Warning: native_modules.gradle not found, skipping autolinking.")
+    }
+}
+applyNativeModulesSettingsGradle(settings)
+
 if (settings.hasProperty("newArchEnabled") && settings.newArchEnabled == "true") {
     include(":ReactAndroid")
     project(":ReactAndroid").projectDir = file('../node_modules/react-native/ReactAndroid')
     include(":ReactAndroid:hermes-engine")
     project(":ReactAndroid:hermes-engine").projectDir = file('../node_modules/react-native/ReactAndroid/hermes-engine')
 }
-
-// (Optional for Expo — keep commented if not using Expo)
-// apply from: new File(["node", "--print", "require.resolve('expo/package.json')"].execute(null, rootDir).text.trim(), "../scripts/autolinking.gradle")
-// useExpoModules()
