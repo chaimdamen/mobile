@@ -1,0 +1,19 @@
+workflows:
+  debug_build:
+    name: Debug APK Build
+    max_build_duration: 60
+    environment:
+      node: 18.18.0
+      java: 17
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm install --legacy-peer-deps
+      - name: Build Android debug APK
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew clean
+          ./gradlew assembleDebug --no-daemon
+    artifacts:
+      - android/app/build/outputs/**/*.apk
