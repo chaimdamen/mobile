@@ -1,112 +1,174 @@
-import React, {Component, RefObject} from 'react';
-import {connect} from 'react-redux';
+/*
+ * Copyright 2022 WPPConnect Team
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import React, { useRef, useEffect } from 'react';
+import { StyleSheet, View, ScrollView, DeviceEventEmitter } from 'react-native';
+import { connect } from 'react-redux';
 import {
   FlingGestureHandler,
   Directions,
   State,
 } from 'react-native-gesture-handler';
-import {StyleSheet, View, ScrollView, DeviceEventEmitter} from 'react-native';
-import {ActivityIndicator, Text} from '@react-native-material/core';
+import { NavigationScreenProp } from 'react-navigation';
+import { ActivityIndicator, Text } from '@react-native-material/core';
 import QRCode from 'react-native-qrcode-svg';
-import WebView from 'react-native-webview';
-import {gestureHandlerJS} from 'components/WhatsApp/consts';
-import WhatsApp from 'components/WhatsApp';
-import {HandlerStateChangeEvent} from 'react-native-gesture-handler/lib/typescript/handlers/gestureHandlerCommon';
+import { HandlerStateChangeEvent } from 'react-native-gesture-handler/lib/typescript/handlers/gestureHandlerCommon';
+import translate from 'translations';
+import { WaJsState } from 'redux/reducer/wajs';
+import WhatsApp, {
+  sendWhatsAppCommand,
+  WhatsAppCommandResult,
+} from 'components/WhatsApp';
 import AppBar from 'components/AppBar';
-import {NavigationScreenProp} from 'react-navigation';
-import {showMessage} from 'react-native-flash-message';
-import {WaJsState} from 'redux/reducer/wajs';
+import { gestureHandlerJS, onCommandResult } from 'components/WhatsApp/consts';
+import { QRCodeSettings } from './consts';
+import uuid from 'react-native-uuid';
 
 interface AppHomeScreenProps extends WaJsState {
   navigation: NavigationScreenProp<any>;
 }
 
-class AppHomeScreen extends Component<AppHomeScreenProps, {}> {
-  state = {
-    webviewRef: React.createRef<WebView>(),
-    refUpdated: false,
-  };
-  constructor(props: any) {
-    super(props);
-    DeviceEventEmitter.addListener('whatsapp.updateref', this.updateRef);
-    showMessage({
-      message: 'Atenção',
-      description:
-        'Por segurança a automação só continua sendo executada nesta tela, você pode minimiza-la também.',
-      type: 'info',
-    });
-  }
-
-  onHandlerStateChange = (event: HandlerStateChangeEvent) => {
-    if (event.nativeEvent.state === State.ACTIVE) {
-      this.state.webviewRef?.current?.injectJavaScript(gestureHandlerJS);
+const AppHomeScreen = (
+  props: AppHomeScreenProps | Readonly<AppHomeScreenProps>,
+) => {
+  const webviewRef = useRef<any>(null);
+  const [state, setState] = React.useState({
+    instance: {
+      contacts: {
+        result: null,
+        hookId: '' as string | number[]
+      },
     }
-  };
+  });
 
-  updateRef = (ref: RefObject<WebView>) => {
-    if (!this.state.refUpdated) {
-      this.setState({
-        webviewRef: ref,
-        refUpdated: true,
+  useEffect(() => {
+    const subs = DeviceEventEmitter.addListener(
+      onCommandResult,
+      onWhatsAppCommandResult,
+    );
+
+    let contactsUpdateInterval = setInterval(() => {
+      if (props.isAuthenticted && props.isWaJsReady) {
+        const { result, hookId } = state.instance.contacts;
+        if (result === null || result === []) {
+          updateContacts();
+        }
+      }
+    }, 5000);
+
+    return () => {
+      subs.remove();
+      clearInterval(contactsUpdateInterval);
+    }
+  }, [props.isAuthenticted, props.isWaJsReady]);
+
+
+  const onWhatsAppCommandResult = (result: WhatsAppCommandResult) => {
+    if (result.commandId === state.instance.contacts.hookId) {
+      console.log(`Received result from ${result.command}`);
+      setState({
+        instance: {
+          contacts: {
+            result: result.result,
+            hookId: state.instance.contacts.hookId,
+          },
+        },
       });
     }
   };
 
-  authView = () => <Text>Legal</Text>;
-  noAuthView = () =>
-    this.props.authcode ? (
-      <QRCode
-        value={this.props.authcode.fullCode}
-        logoSize={100}
-        size={200}
-        ecl={'H'}
-      />
-    ) : (
-      <View>
-        <ActivityIndicator size="large" />
-        <Text
-          style={{
-            textAlign: 'center',
-            marginTop: 25,
-          }}>
-          Aguarde, estamos preparando tudo
-        </Text>
-      </View>
-    );
+  const onHandlerStateChange = (event: HandlerStateChangeEvent) => {
+    if (event.nativeEvent.state === State.ACTIVE) {
+      webviewRef?.current?.injectJavaScript(gestureHandlerJS);
+    }
+  };
 
-  render() {
+  const authView = () => <Text>{JSON.stringify(props)}</Text>;
+  const noAuthView = () => {
     return (
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollOuter}>
-        <FlingGestureHandler
-          direction={Directions.RIGHT}
-          onHandlerStateChange={e => this.onHandlerStateChange(e)}>
-          <View style={styles.view}>
-            <AppBar navigation={this.props.navigation} />
-            <View
-              style={{
-                padding: 50,
-                flex: 1,
-                alignItems: 'center',
-                alignContent: 'center',
-              }}>
-              {this.props.isAuthenticted && this.props.webpack.ready
-                ? this.authView()
-                : this.noAuthView()}
-            </View>
-            <WhatsApp />
-          </View>
-        </FlingGestureHandler>
-      </ScrollView>
+      props.authcode && !props.isAuthenticted ? (
+        <QRCode value={props.authcode.fullCode} {...QRCodeSettings} />
+      ) : (
+        <View>
+          <ActivityIndicator size="large" />
+          <Text style={styles.preparingInstance}>
+            {translate('view.app.home.preparing_instance', {
+              defaultValue: 'Wait, we are preparing everything',
+            })}
+          </Text>
+        </View>
+      )
     );
   }
-}
+
+  const updateContacts = () => {
+    const hookId = uuid.v4();
+    setState({
+      instance: {
+        contacts: {
+          result: null,
+          hookId: hookId,
+        },
+      },
+    });
+    sendWhatsAppCommand({
+      command: 'contact.list',
+      commandId: String(hookId),
+    });
+  };
+
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollOuter}>
+      <FlingGestureHandler
+        direction={Directions.RIGHT}
+        onHandlerStateChange={e => onHandlerStateChange(e)}>
+        <View style={styles.view}>
+          <AppBar
+            navigation={props.navigation}
+          />
+          <View style={styles.containerView}>
+            {props.isAuthenticted && props.webpack.ready
+              ? authView()
+              : noAuthView()}
+          </View>
+          <WhatsApp />
+        </View>
+      </FlingGestureHandler>
+    </ScrollView >
+  );
+};
+
 const styles = StyleSheet.create({
-  scrollOuter: {
-    width: '100%',
+  containerView: {
+    alignContent: 'center',
+    alignItems: 'center',
+    flex: 1,
+    padding: 50,
+  },
+  preparingInstance: {
+    marginTop: 25,
+    textAlign: 'center',
   },
   scroll: {
+    width: '100%',
+  },
+  scrollOuter: {
     width: '100%',
   },
   view: {
@@ -120,6 +182,9 @@ const mapStateToProps = (state: any) => {
     authcode: state?.wajs?.authcode,
     isAuthenticted: state.wajs?.isAuthenticted,
     webpack: state.wajs?.webpack,
+    config: state.wajs?.config,
+    isMainReady: state.wajs?.isMainReady,
+    isWaJsReady: state.wajs?.isWaJsReady,
   };
 };
 
